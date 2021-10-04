@@ -20,3 +20,6 @@ There must be a `.env` file present in the bot's directory in order for it to fu
 `OUTPUT_DIR`: The base path, relative to which PDFs are saved if an argument to $start is provided. For example, if `OUTPUT_DIR` is `/home/username/Documents/`, and you type `$start "Homework/Day 1"`, then the PDF will be output to the directory `/home/username/Documents/Homework/Day 1`. This can be set to whatever you like, and inputting absolute paths is entirely acceptable as well.
 
 `NAME_CONVENTION`: A suffix that is appended to all PDF filenames generated, perhaps to identify yourself or something about the scan. May include personal information, so it is better kept in the `.env` file.
+
+## Running
+Simply execute `python bot.py` in the terminal and the bot will await input via Discord messages. In order to have the bot run on your machine, you must specify the above environment variables in the `.env` file, thus you will may need to create a new Discord bot account and configure the OUTPUT_DIR and naming convention respectively. Feel free to modify the source if these features do not suit you; there is only one file, so editing the code should be generally trivial.
