@@ -1,7 +1,7 @@
 import discord
 import os
 from dotenv import load_dotenv
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 
@@ -32,7 +32,7 @@ def parse_args(argstring: str):
     
     return args
 
-def wipe_scans():
+def wipe_temp():
     for path in os.listdir("temp"):
         os.remove(os.path.join("temp", path))
 
@@ -40,28 +40,46 @@ def generate_pdf():
     width_max = height_max = 0
     images = []
     for image in os.listdir("temp"):
-        im = Image.open(os.path.join("temp", image))
+        try:
+            im = Image.open(os.path.join("temp", image))
+        except UnidentifiedImageError:
+            pass
         if im.height > height_max:
             height_max = im.height
         if im.width > width_max:
             width_max = im.width
         images.insert(0, im)
 
-    if not os.path.exists(os.path.join(OUTPUT, client.scan_name)):
-        os.mkdir(os.path.join(OUTPUT, client.scan_name))
-    
-    title = f"{os.path.basename(os.path.join(OUTPUT, client.scan_name))}{NAME_CONVENTION}"
-    canv = canvas.Canvas(os.path.join(OUTPUT, client.scan_name, title), pagesize=(width_max, height_max))
+    if client.scan_name:        
+        base_path = os.path.join(OUTPUT, client.scan_name)
+    else:
+        base_path = "temp"
+
+    if not os.path.exists(base_path):
+        if os.path.sep not in client.scan_name:
+            segments = os.path.split(client.scan_name)[1:]
+        else:
+            segments = os.path.split(client.scan_name)
+        print(segments)
+        for i in range(len(segments)):
+            folder_to_create = segments[:i+1]
+            dir = os.path.join(OUTPUT, *(folder_to_create))
+            print(folder_to_create, dir)
+            os.mkdir(dir)
+
+    title = f"{os.path.basename(base_path)}{NAME_CONVENTION}"
+    pdf_path = os.path.join(base_path, title)
+    canv = canvas.Canvas(pdf_path, pagesize=(width_max, height_max))
     for im in images:
         canv.drawImage(ImageReader(im), 0, height_max-im.height)
         canv.showPage()
 
     canv.save()
-    return os.path.join(OUTPUT, client.scan_name, title)
+    return pdf_path
 
 client = discord.Client()
 client.scanning = False
-client.scan_name = ""
+client.scan_name = None # str type, but bot can be used without a file path
 
 @client.event
 async def on_ready():
@@ -77,22 +95,26 @@ async def on_message(message: discord.Message):
         return
     else:
         args = parse_args(message.content)
-        cmd = args[0][1:]
+        cmd = args[0][1:].lower()
         args = args[1:]
     
     if cmd == "start":
+        client.scanning = True
+        wipe_temp()
         if len(args) < 1:
-            await message.channel.send("Error: filepath for scan output not specified, aborting.")
+            client.scan_name = None
+            await message.channel.send("Initialising new temporary scan, will output to attachment only")
             return
         else:
             client.scan_name = args[0]
-
-        wipe_scans()
-        client.scanning = True
-        await message.channel.send(f"Initialising new scan with output at {os.path.join(OUTPUT, client.scan_name)}...")
-        return
+            await message.channel.send(f"Initialising new scan with output at {os.path.join(OUTPUT, client.scan_name)}...")
+            return
 
     elif cmd == "im":
+        if not client.scanning:
+            await message.channel.send("No scan is currently in progress. Use $start to begin a scan.")
+            return
+
         if len(message.attachments) < 1:
             await message.channel.send("Error: no image was attached, please enter again.")
             return
@@ -103,9 +125,26 @@ async def on_message(message: discord.Message):
         await message.channel.send("Successfully saved all attachments.")
     
     elif cmd == "end":
-        path = generate_pdf()
-        wipe_scans()
+        if not client.scanning:
+            await message.channel.send("No scan is currently in progress. Use $start to begin a scan.")
+            return
+
+        await message.channel.send("Beginning PDF generation...")
+        try:
+            path = generate_pdf()
+        except Exception as error:
+            await message.channel.send("An error occurred in generating the PDF.")
         client.scanning = False
-        await message.channel.send("Generated PDF", file=discord.File(path))
+        status = "Generated PDF"
+        file_size = os.path.getsize(path) 
+        if file_size < 8*1024*1024:
+            file = discord.File(path)
+        else:
+            status += f" (file size too large — {file_size} bytes exceeds the {8*1024*1024}-byte limit.)"
+            file = None
+        await message.channel.send(status, file=file)
+
+        # Could theoretically wipe the temp folder here again, but it is perhaps a little redundant,
+        # since starting a new scan will always do this before appending any images anyway.
 
 client.run(TOKEN)
