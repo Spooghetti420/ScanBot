@@ -60,12 +60,11 @@ def generate_pdf():
             segments = os.path.split(client.scan_name)[1:]
         else:
             segments = os.path.split(client.scan_name)
-        print(segments)
         for i in range(len(segments)):
             folder_to_create = segments[:i+1]
-            dir = os.path.join(OUTPUT, *(folder_to_create))
-            print(folder_to_create, dir)
-            os.mkdir(dir)
+            directory = os.path.join(OUTPUT, *(folder_to_create))
+            if not os.path.exists(directory):
+                os.mkdir(directory)
 
     title = f"{os.path.basename(base_path)}{NAME_CONVENTION}"
     pdf_path = os.path.join(base_path, title)
@@ -134,6 +133,7 @@ async def on_message(message: discord.Message):
             path = generate_pdf()
         except Exception as error:
             await message.channel.send("An error occurred in generating the PDF.")
+            print(error)
         client.scanning = False
         status = "Generated PDF"
         file_size = os.path.getsize(path) 
